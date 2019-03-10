@@ -1,0 +1,10 @@
+FROM golang:1.11-alpine3.8
+
+LABEL maintainer="Philip Laine <philip.laine@gmail.com>"
+LABEL url="https://www.github.com/phillebaba/ucnb"
+
+ENV ARCH=amd64
+
+COPY ucnb-${ARCH} /opt/bin/ucnb
+
+ENTRYPOINT ["/opt/bin/ucnb"]

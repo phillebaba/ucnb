@@ -1,0 +1,54 @@
+sudo: true
+language: go
+
+stages:
+- test
+- name: release
+  if: tag IS present
+
+jobs:
+  include:
+  - stage: test
+    script:
+      - go get golang.org/x/lint/golint
+      - golint
+  - script: go test -v
+  - stage: release
+    env:
+      - DOCKER_USERNAME=phillebaba
+      - secure: VO07iXWhS09Sv9/VIpixU/qCCbzGEt2RMZl/Dq03q7KtCGDgPUdHGOUnUo7y7w/F/cD1P968JZpZ4obDKUkWJD9gJDcPUoIds/tcP+a2qbu3G/LqoyBIcOtmgiS8RJFDpC5cD+bx7Be0+zG2Fzd083/XgHzZmR/2/VlRI2b1qa383oSJc1pS7XfG6pm/6fz5OOLvUbxrEkvrC9c8upf3Olfo/SsXaCuL+MohweAcoRndJLu/IAbsvixGcImOROGugGSCNAQYX7r9sldblb91nw7dljSRpuLOidR6uQmku1t5unQyiJOSa2ol7eigp5gY7shfg5wS4JEZ//4aVvZnm+J+CrpapjUSFglAP4hEVi/VIInepJp+CiRljodga1/11Zf5WIUChJqVt67YT5dNWGLes6JoJKUQg/mYD0glnu57FqsjukQfE8WnN/EDDR/l1KSp2Kjhcnsm2KhIPNtsun+qGvIv1hXTNJl23/Cit7QHPvrX3Sd4yZ9vIwqL0Ybz6X8DJVFhaSKnKQpXZr3MRml2oytsvowDOZV73Qaz1LLi9m+dyZFmxb+xz6f76hiLc3pQTpUsmCx6ygzOFR2m4ZmS5jGv4eOTII1njcULrRff8XaCmQhcnh00dcGxN8zDjKVgQe1KHSLxqv9IpgbkiRO4sQJtx65wMWEfJTxuxNQ=
+    services: docker
+    script:
+      # Start qeemu multiarch support
+      - docker run --rm --privileged multiarch/qemu-user-static:register
+      # Build Go binaries
+      - env GOOS=linux GOARCH=amd64 go build -o ucnb-amd64
+      - env GOOS=linux GOARCH=arm go build -o ucnb-arm
+      - env GOOS=linux GOARCH=arm64 go build -o ucnb-arm64
+      # Build docker images
+      - docker build -t $DOCKER_USERNAME/ucnb:${TRAVIS_TAG}-linux-amd64 -f ./Dockerfile.amd64 .
+      - docker build -t $DOCKER_USERNAME/ucnb:${TRAVIS_TAG}-linux-arm -f ./Dockerfile.arm .
+      - docker build -t $DOCKER_USERNAME/ucnb:${TRAVIS_TAG}-linux-arm64 -f ./Dockerfile.arm64 .
+      # Push docker images
+      - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+      - docker push $DOCKER_USERNAME/ucnb:${TRAVIS_TAG}-linux-amd64
+      - docker push $DOCKER_USERNAME/ucnb:${TRAVIS_TAG}-linux-arm
+      - docker push $DOCKER_USERNAME/ucnb:${TRAVIS_TAG}-linux-arm64
+      # Download manifest-tool
+      - wget https://github.com/estesp/manifest-tool/releases/download/v0.6.0/manifest-tool-linux-amd64
+      - mv manifest-tool-linux-amd64 manifest-tool
+      - chmod +x manifest-tool
+      # Push manifest-list
+      - ./manifest-tool push from-args --platforms linux/amd64,linux/arm,linux/arm64 --template "phillebaba/ucnb:${TRAVIS_TAG}-OS-ARCH" --target "phillebaba/ucnb:${TRAVIS_TAG}"
+    deploy:
+      provider: releases
+      skip_cleanup: true
+      api_key:
+        secure: RT2rkBZlHxNBtPfu4CDS0M7rEr5NQMO7lL9OiTgu8eydI9j6g4jUCGOrsdE1eCdXwqZ7uZicPjREUycLL7g+frZpgP4E5T/ftES9l9Fzj0QrGNUHuP4wXCkQc+LYpu7p7fQMhcBqIcKbd6jKvigEJpeJ69UBuiwupSLon9xxj+FRs7urR5KuugSKgidgWrQykUjCLlFDOtsj98ZIN0F5Pe9aMVdyT74XONdC24qPe5RnLXk0JLJXLZMjHY76Lbh6nRxUYKxdtyyf1rx5UhU7HJCqE8TMHhdLPnWLJjxSEINlhtjb2JiFs+uV+nfuC9F/PW1fSIulZ+uGkc9H1LeBf7L+2ikb9K0dFBrBFgqFG/MP7KslA2OEAR9UAR37J8LzkJCwXfv7h8Om0lOEt8zsrzx0ECfPyOnu7J7aDqrm5jRMu+dgxJNmgqlFDMUjsNY7wUotRKlaxbOtWUpSjR7pthL3WOQsGogJgvPbYU6wI/YwlWK19k/6AmyZuKa8E4jFnKTUI7fx7cdaooV/aEDznh5pkDPAuGvnJJSeEvn5ax/0ncvZKv6mpqJOCYYnMjsMvrQGLV+br5Nfp9vsu4+hMl02ZcM4pKP5/dUz3n8UVJ4QcSGchKt1UGI/8mg8WRbXNG37GpcuM0IhdqQjzmPmY+q9j6KXNVl+mCbdUGRvJC8=
+      file:
+        - ucnb-amd64
+        - ucnb-arm
+        - ucnb-arm64
+      on:
+        repo: phillebaba/ucnb
+        tags: true
